@@ -2,10 +2,16 @@ from functools import partial
 
 from torch import save
 
-from fastai.basic_train import Learner
-from fastai.train import ShowGraph
-from fastai.data_block import DataBunch
+#from fastai.basic_train import Learner
+#from fastai.train import ShowGraph
+#from fastai.data_block import DataBunch
 from torch import optim
+
+
+import torch.nn as nn
+from fastai.learner import Learner
+from fastai.callback.all import ShowGraphCallback
+from fastai.data.core import DataLoaders
 
 from dataset.fracnet_dataset import FracNetTrainDataset
 from dataset import transforms as tsfm
@@ -46,8 +52,8 @@ def main(args):
     dl_val = FracNetTrainDataset.get_dataloader(ds_val, batch_size, False,
         num_workers)
 
-    databunch = DataBunch(dl_train, dl_val,
-        collate_fn=FracNetTrainDataset.collate_fn)
+    #databunch = DataBunch(dl_train, dl_val, collate_fn=FracNetTrainDataset.collate_fn)
+    databunch = DataLoaders(dl_train, dl_val, collate_fn=FracNetTrainDataset.collate_fn)
 
     learn = Learner(
         databunch,
@@ -63,7 +69,7 @@ def main(args):
         pct_start=0,
         div_factor=1000,
         callbacks=[
-            ShowGraph(learn),
+            ShowGraphCallback()
         ]
     )
 

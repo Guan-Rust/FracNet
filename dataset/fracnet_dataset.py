@@ -136,7 +136,7 @@ class FracNetTrainDataset(Dataset):
         label_path = os.path.join(self.label_dir, f"{public_id}-label.nii.gz")
         image = nib.load(image_path)
         label = nib.load(label_path)
-        image_arr = image.get_fdata().astype(np.float)
+        image_arr = image.get_fdata().astype(np.float64)
         label_arr = label.get_fdata().astype(np.uint8)
 
         # calculate rois' centroids
@@ -154,7 +154,7 @@ class FracNetTrainDataset(Dataset):
 
         image_rois = torch.tensor(np.stack(image_rois)[:, np.newaxis],
             dtype=torch.float)
-        label_rois = (np.stack(label_rois) > 0).astype(np.float)
+        label_rois = (np.stack(label_rois) > 0).astype(np.float64)
         label_rois = torch.tensor(label_rois[:, np.newaxis],
             dtype=torch.float)
 
