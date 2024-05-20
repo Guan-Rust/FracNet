@@ -14,6 +14,10 @@ from dataset.fracnet_dataset import FracNetInferenceDataset
 from dataset import transforms as tsfm
 from model.unet import UNet
 
+# device def
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+#os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '0'
+#device = torch.device("cpu")
 
 def _remove_low_probs(pred, prob_thresh):
     pred = np.where(pred > prob_thresh, pred, 0)
@@ -74,7 +78,8 @@ def _predict_single_image(model, dataloader, postprocess, prob_thresh,
     with torch.no_grad():
         for _, sample in enumerate(dataloader):
             images, centers = sample
-            images = images.cuda()
+            #images = images.cuda()
+            images = images.to(device)
             output = model(images).sigmoid().cpu().numpy().squeeze(axis=1)
 
             for i in range(len(centers)):
@@ -121,12 +126,15 @@ def predict(args):
     num_workers = 4
     postprocess = True if args.postprocess == "True" else False
 
-    model = UNet(1, 1, first_out_channels=16)
+    model = UNet(1, 1, first_out_channels=16)   #使用Unet
     model.eval()
     if args.model_path is not None:
-        model_weights = torch.load(args.model_path)
+        #model_weights = torch.load(args.model_path) 参照copilot修改
+        model_weights = torch.load(args.model_path, map_location=device)
         model.load_state_dict(model_weights)
-    model = nn.DataParallel(model).cuda()
+    #model = nn.DataParallel(model).cuda()
+    # 将模型移动到MPS设备
+    model = model.to(device)
 
     transforms = [
         tsfm.Window(-200, 1000),

@@ -7,11 +7,14 @@ from torch import save
 #from fastai.data_block import DataBunch
 from torch import optim
 
+import torch #为了使用mps
 
 import torch.nn as nn
 from fastai.learner import Learner
-from fastai.callback.all import ShowGraphCallback
+from fastai.callback.progress import ShowGraphCallback
 from fastai.data.core import DataLoaders
+
+from fastai.optimizer import SGD
 
 from dataset.fracnet_dataset import FracNetTrainDataset
 from dataset import transforms as tsfm
@@ -20,7 +23,15 @@ from model.unet import UNet
 from model.losses import MixLoss, DiceLoss
 
 
+# 检查MPS是否可用并设置设备
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+#import os
+#os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '0'
+#device = torch.device("cpu")
+
 def main(args):
+    # 实例化模型并将其移动到MPS设备
+    model = UNet(1, 1, first_out_channels=16).to(device)   #使用Unet
     train_image_dir = args.train_image_dir
     train_label_dir = args.train_label_dir
     val_image_dir = args.val_image_dir
@@ -28,7 +39,7 @@ def main(args):
 
     batch_size = 4
     num_workers = 4
-    optimizer = optim.SGD
+    optimizer = SGD
     criterion = MixLoss(nn.BCEWithLogitsLoss(), 0.5, DiceLoss(), 1)
 
     thresh = 0.1
@@ -36,8 +47,12 @@ def main(args):
     precision_partial = partial(precision, thresh=thresh)
     fbeta_score_partial = partial(fbeta_score, thresh=thresh)
 
-    model = UNet(1, 1, first_out_channels=16)
-    model = nn.DataParallel(model.cuda())
+    # windows上使用cuda
+    #model = UNet(1, 1, first_out_channels=16)
+    #model = nn.DataParallel(model.cuda())
+
+    # 实例化模型并将其移动到MPS设备
+    #model = UNet(1, 1, first_out_channels=16).to(device)
 
     transforms = [
         tsfm.Window(-200, 1000),
@@ -51,30 +66,44 @@ def main(args):
         transforms=transforms)
     dl_val = FracNetTrainDataset.get_dataloader(ds_val, batch_size, False,
         num_workers)
-
+    
     #databunch = DataBunch(dl_train, dl_val, collate_fn=FracNetTrainDataset.collate_fn)
-    databunch = DataLoaders(dl_train, dl_val, collate_fn=FracNetTrainDataset.collate_fn)
+    #databunch = DataLoaders(dl_train, dl_val, collate_fn=FracNetTrainDataset.collate_fn)
+    # 更新DataLoaders的使用
+    dls = DataLoaders(dl_train, dl_val)
+
 
     learn = Learner(
-        databunch,
+        dls,
         model,
-        opt_func=optimizer,
+        opt_func=partial(optimizer, lr=1e-1, mom=0.9),
         loss_func=criterion,
         metrics=[dice, recall_partial, precision_partial, fbeta_score_partial]
     )
 
-    learn.fit_one_cycle(
-        200,
-        1e-1,
-        pct_start=0,
-        div_factor=1000,
-        callbacks=[
-            ShowGraphCallback()
-        ]
+    # 确保Learner使用MPS设备
+    learn.model.to(device)
+    
+    #learn.fit_one_cycle(
+    #用于训练模型
+    learn.fit(
+        n_epoch=200,    #训练过程将遍历整个数据集200次
+        lr=1e-1,        #是学习率（Learning Rate）的设定，1e-1等于0.1。学习率是一个超参数，决定了模型学习的速度。如果学习率太大，模型可能会在最佳解周围震荡而无法收敛；如果学习率太小，训练过程可能会非常慢。
+        #200,
+        #1e-1,
+        #pct_start=0,
+            #pct_start=0.3,
+        #div_factor=1000,
+            #div=25.0,
+        #callbacks=[ShowGraphCallback()]
+        cbs=[ShowGraphCallback()]
     )
 
     if args.save_model:
-        save(model.module.state_dict(), "./model_weights.pth")
+        # cuda版本 多GYU并行处理-DataParallel版本的模型
+        #save(model.module.state_dict(), "./model_weights.pth")
+        # 因mps，故保存模型时确保保存的是非DataParallel版本的模型
+        save(model.state_dict(), "./model_weights.pth")
 
 
 if __name__ == "__main__":
